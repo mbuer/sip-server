@@ -26,17 +26,19 @@ Current validated setup:
 
     MicroSIP
     Extension 1001
+         ↕
          |
          | SIP + RTP
          |
-         v
+         ↕
       Asterisk
     Company NUC
     10.85.30.30
+         ↕
          |
          | SIP + RTP
          |
-         v
+         ↕
     Artist G2
     VoIP-108
     Extension 1002
