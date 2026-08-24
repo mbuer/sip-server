@@ -49,7 +49,7 @@ Planned hardware testing:
 - Duo SIP Interface
 
 For Artist G2 VoIP-108 configuration and test results, see
-[G2.md](G2.md).
+[VoIP108G2.md](VoIP108G2.md).
 
 ---
 
@@ -337,7 +337,7 @@ Validated functionality includes:
 The Artist configuration contains both **card-level SIP settings** and
 **individual VoIP line settings**. Both are required for a working call.
 
-See [G2.md](G2.md) for the validated configuration and troubleshooting notes.
+See [VoIP108G2.md](VoIP108G2.md) for the validated configuration and troubleshooting notes.
 
 ---
 
@@ -452,7 +452,7 @@ Enable:
 Then verify RTP in both directions and check routing, firewall rules, SDP
 addresses, codec negotiation and NAT handling.
 
-For Artist-specific call behavior, see [G2.md](G2.md).
+For Artist-specific call behavior, see [VoIP108G2.md](VoIP108G2.md).
 
 ---
 
