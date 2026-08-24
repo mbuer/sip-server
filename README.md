@@ -1,5 +1,35 @@
 # Riedel Lab SIP Server
 
+## Project Development
+
+This is a Copilot-assisted project.
+
+## Quick Install
+
+A basic installation script is included for new Debian/Ubuntu systems:
+
+    ./install.sh
+
+The script:
+
+- installs Asterisk
+- detects available IPv4 interfaces
+- allows selection of the SIP interface
+- updates the PJSIP bind address in `config/pjsip.conf`
+
+Make the script executable if required:
+
+    chmod +x install.sh
+
+Then run:
+
+    ./install.sh
+
+The script intentionally performs only the basic installation. Continue with
+the manual configuration steps below to configure and validate Asterisk.
+
+## SIP Server Overview
+
 Asterisk-based SIP server for interoperability testing of Riedel SIP audio devices.
 
 The goal is to provide a simple, reproducible SIP environment for testing current Riedel SIP interfaces with legacy Artist G2 VoIP hardware.
