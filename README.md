@@ -1,6 +1,9 @@
 # Riedel Lab SIP Server
 
-> This is a Copilot-assisted project.
+> **Disclaimer:** This is a Copilot-assisted project. Parts of the code,
+> configuration, and documentation were created or refined with AI assistance.
+> All configurations should be reviewed and validated before use in a
+> production environment.
 
 A simple Asterisk-based SIP lab for interoperability testing of current Riedel
 SIP interfaces and legacy Artist G2 VoIP hardware.
@@ -58,9 +61,10 @@ troubleshooting Riedel hardware.
 
 ---
 
-## 2. Quick Install
+## 2. Installation and Initial Setup
 
-For a new Debian/Ubuntu system:
+For a new Debian/Ubuntu system, the included installation script performs the
+basic setup:
 
     chmod +x install.sh
     ./install.sh
@@ -72,79 +76,10 @@ The script:
 - allows selection of the SIP interface
 - updates the PJSIP bind address in `config/pjsip.conf`
 
-The script intentionally performs only the basic installation and bind
-configuration.
+The script deliberately stops there. Asterisk configuration is deployed and
+validated manually using the steps below.
 
-<<<<<<< HEAD
-    chmod +x install.sh
-
-Then run:
-
-    ./install.sh
-
-The script intentionally performs only the basic installation. Continue with
-the manual configuration steps below to configure and validate Asterisk.
-
-## SIP Server Overview
-
-Asterisk-based SIP server for interoperability testing of Riedel SIP audio devices.
-
-The goal is to provide a simple, reproducible SIP environment for testing current Riedel SIP interfaces with legacy Artist G2 VoIP hardware.
-
-Currently validated:
-
-- Asterisk 20
-- MicroSIP
-- Artist G2 VoIP-108
-- SIP over UDP
-- G.711 μ-law (PCMU)
-- Bidirectional RTP through Asterisk
-
-Planned hardware testing:
-
-- IPx16 SIP Interface
-- Duo SIP Interface
-
-For Artist G2 VoIP-108 configuration and test results, see
-[VoIP108G2.md](VoIP108G2.md).
-
----
-
-## 1. Lab Topology
-
-Current validated setup:
-
-    MicroSIP
-    Extension 1001
-         ↕
-         | SIP + RTP
-         ↕
-      Asterisk
-    Company NUC
-    10.85.30.30
-         ↕
-         | SIP + RTP
-         ↕
-    Artist G2 VoIP-108
-    Extension 1002
-    10.85.226.120
-
-Asterisk acts as the SIP registrar and call router while intentionally
-remaining in the RTP media path.
-
-MicroSIP provides a known-good reference endpoint when introducing or
-troubleshooting Riedel hardware.
-
----
-
-## 2. Asterisk Installation
-
-Install Asterisk:
-
-    sudo apt update
-    sudo apt install asterisk
-
-Verify:
+To verify the installation:
 
     asterisk -V
     sudo systemctl status asterisk --no-pager
@@ -152,10 +87,6 @@ Verify:
 The current NUC was validated with:
 
     Asterisk 20.6
-=======
-The remaining configuration is deployed manually so that each step can be
-understood and verified.
->>>>>>> 64ff7c4 (Add IPx16 interoperability support)
 
 ---
 
@@ -163,9 +94,9 @@ understood and verified.
 
 This project uses **PJSIP only**.
 
-Asterisk may also load the legacy `chan_sip` channel driver. During the
-initial deployment, `chan_sip` claimed UDP port 5060 before PJSIP could create
-its transport.
+Asterisk may also load the legacy `chan_sip` channel driver. During initial
+deployment, `chan_sip` claimed UDP port 5060 before PJSIP could create its
+transport.
 
 The symptom was:
 
@@ -180,6 +111,8 @@ while:
     sip show settings
 
 showed UDP/5060 in use.
+
+This indicates that `chan_sip`, rather than PJSIP, owns the SIP port.
 
 ### Disable chan_sip
 
@@ -229,7 +162,7 @@ Restart Asterisk:
 
     sudo systemctl restart asterisk
 
-Connect:
+Connect to the CLI:
 
     sudo asterisk -rvvv
 
@@ -243,8 +176,8 @@ The current lab server uses:
 
     10.85.30.30:5060/UDP
 
-The bind address is deployment-specific and must match the selected SIP
-interface.
+The bind address is deployment-specific and must match the SIP interface
+selected during installation.
 
 ---
 
@@ -268,8 +201,12 @@ The endpoint configuration also contains:
     rewrite_contact=yes
     rtp_symmetric=yes
 
-Each endpoint requires a matching PJSIP endpoint, authentication object, AOR,
-and dialplan entry.
+Each SIP device requires:
+
+- a PJSIP endpoint
+- authentication
+- an AOR
+- a matching dialplan entry
 
 Show all endpoints:
 
@@ -278,6 +215,9 @@ Show all endpoints:
 Inspect a specific endpoint:
 
     pjsip show endpoint 1002
+
+Registration and dialing are separate. A device can be successfully registered
+but still cannot be called until its extension exists in the dialplan.
 
 ---
 
@@ -312,12 +252,12 @@ MicroSIP advertised its local SIP address as:
 
     192.168.1.215:63696
 
-while Asterisk actually received its traffic from:
+while Asterisk actually received the traffic from:
 
     10.85.116.134:63696
 
-Without NAT-aware handling, SIP signaling could be sent toward the address
-advertised by the client rather than the address through which the client was
+Without NAT-aware handling, Asterisk could attempt to send SIP signaling back
+to the advertised address rather than the address through which the client was
 actually reachable.
 
 #### rewrite_contact
@@ -346,8 +286,8 @@ request was actually received.
 For RTP, Asterisk can send media toward the address and port from which RTP is
 actually received instead of relying only on the address advertised in SDP.
 
-Together with `direct_media=no`, these settings provide predictable signaling
-and media behavior when NAT is involved.
+Together with `direct_media=no`, these settings provide predictable SIP and
+RTP behavior when NAT is involved.
 
 ---
 
@@ -355,7 +295,7 @@ and media behavior when NAT is involved.
 
 ### MicroSIP
 
-MicroSIP is used as the reference endpoint.
+MicroSIP is used as the known-good reference endpoint.
 
 Example configuration:
 
@@ -379,9 +319,6 @@ A normal SIP Digest registration sequence is:
 The initial `401 Unauthorized` is expected. It is the SIP Digest
 authentication challenge and does not indicate a failed registration.
 
-Once MicroSIP is registered and working, it provides a useful reference
-endpoint for hardware interoperability testing.
-
 ### Artist G2 VoIP-108
 
 The Artist G2 VoIP-108 uses extension `1002`.
@@ -391,28 +328,27 @@ Its configuration has two distinct parts:
     Card / SIP Phone settings -> SIP registration
     VoIP Line settings        -> call behavior
 
-One important finding is that `Phone No. incoming` must match the incoming
+An important finding is that `Phone No. incoming` must match the incoming
 caller identity.
 
 A mismatch can result in successful SIP call establishment followed
 immediately by a BYE from the VoIP-108.
 
-See [Artist G2 VoIP-108](VoIP108G2.md) for the complete validated
-configuration and troubleshooting notes.
+See [Artist G2 VoIP-108](VoIP108G2.md) for the validated configuration and
+troubleshooting notes.
 
 ### IPx16 SIP Interface
 
-The IPx16 uses extension `1003` and registered directly to the Asterisk PJSIP
+The IPx16 uses extension `1003` and registers directly to the Asterisk PJSIP
 server.
 
-The IPx16 line was configured with G.722 as its preferred codec but
+The test line was configured with G.722 as its preferred codec but
 successfully negotiated G.711 μ-law / PCMU with the current Asterisk
 configuration.
 
 No IPx16-specific SIP workaround was required.
 
 See [IPx16 SIP Interface](IPx16.md) for the validated configuration.
->>>>>>> 64ff7c4 (Add IPx16 interoperability support)
 
 ---
 
@@ -432,9 +368,6 @@ The current dialplan contains all three lab endpoints:
      same => n,Hangup()
 
 New endpoints can be added using the same structure.
-
-Registration and dialing are separate: a registered endpoint still requires a
-dialplan entry before it can be called.
 
 ---
 
@@ -513,7 +446,7 @@ Verify that:
 
     noload => chan_sip.so
 
-is configured in:
+exists in:
 
     /etc/asterisk/modules.conf
 
@@ -528,6 +461,14 @@ inspect the currently stored contact:
     pjsip show endpoint <extension>
 
 A stale contact may still occupy the endpoint's single allowed registration.
+
+#### Endpoint registers but cannot be called
+
+Check the dialplan:
+
+    dialplan show internal
+
+The registered extension must also exist in `extensions.conf`.
 
 #### Call establishes and immediately disconnects
 
@@ -553,6 +494,8 @@ Then verify:
 - routing
 - firewall rules
 - NAT handling
+
+---
 
 ## 10. Git Workflow
 
