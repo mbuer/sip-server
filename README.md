@@ -1,8 +1,8 @@
 # Riedel Lab SIP Server
 
-Asterisk-based SIP server for lab testing and interoperability testing of Riedel SIP audio devices.
+Asterisk-based SIP server for interoperability testing of Riedel SIP audio devices.
 
-The primary purpose of this server is to test SIP communication between current Riedel SIP interfaces and legacy Artist G2 VoIP hardware.
+The goal is to provide a simple, reproducible SIP environment for testing current Riedel SIP interfaces with legacy Artist G2 VoIP hardware.
 
 Currently validated:
 
@@ -18,6 +18,9 @@ Planned hardware testing:
 - IPx16 SIP Interface
 - Duo SIP Interface
 
+For Artist G2 VoIP-108 configuration and test results, see
+[G2.md](G2.md).
+
 ---
 
 ## 1. Lab Topology
@@ -27,28 +30,23 @@ Current validated setup:
     MicroSIP
     Extension 1001
          ↕
-         |
          | SIP + RTP
-         |
          ↕
       Asterisk
     Company NUC
     10.85.30.30
          ↕
-         |
          | SIP + RTP
-         |
          ↕
-    Artist G2
-    VoIP-108
+    Artist G2 VoIP-108
     Extension 1002
     10.85.226.120
 
-Asterisk acts as the SIP registrar and call router while remaining in the RTP
-media path.
+Asterisk acts as the SIP registrar and call router while intentionally
+remaining in the RTP media path.
 
-MicroSIP provides a known-good reference endpoint when troubleshooting Riedel
-hardware.
+MicroSIP provides a known-good reference endpoint when introducing or
+troubleshooting Riedel hardware.
 
 ---
 
@@ -64,7 +62,9 @@ Verify:
     asterisk -V
     sudo systemctl status asterisk --no-pager
 
-The current NUC was validated with Asterisk 20.6.
+The current NUC was validated with:
+
+    Asterisk 20.6
 
 ---
 
@@ -117,11 +117,10 @@ Then:
     module show like chan_sip
     pjsip show transports
 
-The expected PJSIP transport is:
+`chan_sip` should no longer be loaded and PJSIP should show the configured
+UDP transport.
 
-    transport-udp    udp    10.85.30.30:5060
-
-The lab uses **PJSIP only**.
+This lab uses **PJSIP only**.
 
 ---
 
@@ -155,11 +154,11 @@ Inside the Asterisk CLI:
     pjsip show endpoints
     dialplan show internal
 
-The current transport is bound to:
+The current PJSIP transport is bound to:
 
     10.85.30.30:5060
 
-This IP is specific to the current NUC/network and must be changed when
+This address is specific to the current NUC/network and must be changed when
 deploying the repository elsewhere.
 
 ---
@@ -171,12 +170,12 @@ The current test endpoints are:
     1001 = MicroSIP
     1002 = Artist G2 VoIP-108
 
-Both endpoints currently use:
+Both currently use:
 
     disallow=all
     allow=ulaw
 
-Each endpoint also uses:
+The endpoint configuration also contains:
 
     direct_media=no
     force_rport=yes
@@ -187,9 +186,9 @@ Each endpoint also uses:
 
 ## 6. Media and NAT Handling
 
-### Asterisk as RTP intermediary
+### RTP through Asterisk
 
-The configuration intentionally uses:
+The lab intentionally uses:
 
     direct_media=no
 
@@ -199,53 +198,68 @@ This keeps Asterisk in the media path:
 
 rather than allowing the endpoints to establish RTP directly.
 
-This is useful for interoperability testing because RTP can be captured and
-analyzed centrally on the Asterisk server.
+Keeping Asterisk in the media path makes packet capture, codec analysis and
+interoperability troubleshooting considerably easier.
 
 ### NAT handling
 
-The following settings are also enabled:
+The following settings are enabled:
 
     force_rport=yes
     rewrite_contact=yes
     rtp_symmetric=yes
 
-These became important when testing MicroSIP across NAT.
+These became important during MicroSIP testing.
 
 MicroSIP advertised its local SIP address as:
 
     192.168.1.215:63696
 
-but Asterisk actually received its traffic from:
+while Asterisk actually received its traffic from:
 
     10.85.116.134:63696
 
-Without NAT handling, Asterisk could attempt to send subsequent SIP messages
-to the advertised private address instead of the address from which the
-traffic actually arrived.
+Without NAT-aware handling, SIP signaling could be sent toward the address
+advertised by the client rather than the address through which the client was
+actually reachable.
 
-`rewrite_contact=yes` causes Asterisk to rewrite the registered Contact using
-the received source address.
+#### rewrite_contact
 
-The resulting contact was similar to:
+    rewrite_contact=yes
+
+Asterisk rewrites the registered Contact using the source address from which
+the SIP request was received.
+
+During testing, the resulting contact was similar to:
 
     sip:1001@10.85.116.134:63696;ob;
     x-ast-orig-host=192.168.1.215:63696
 
-`force_rport=yes` causes SIP responses to be sent to the IP address and UDP
-port from which the request was actually received.
+#### force_rport
 
-`rtp_symmetric=yes` provides similar behavior for RTP by allowing Asterisk to
-send media toward the address/port from which RTP is actually received.
+    force_rport=yes
 
-Together with `direct_media=no`, these settings provide predictable SIP and
-RTP behavior when clients are behind NAT.
+SIP responses are sent to the source IP address and UDP port from which the
+request was actually received.
+
+#### rtp_symmetric
+
+    rtp_symmetric=yes
+
+For RTP, Asterisk can send media toward the address/port from which RTP is
+actually received instead of relying only on the address advertised in SDP.
+
+Together with `direct_media=no`, these settings provide predictable signaling
+and media behavior when endpoints are behind NAT.
 
 ---
 
 ## 7. MicroSIP Reference Endpoint
 
-Configure MicroSIP with:
+MicroSIP can be used as a known-good endpoint before introducing Riedel
+hardware.
+
+Example configuration:
 
     SIP Server: 10.85.30.30
     Port:       5060
@@ -254,138 +268,52 @@ Configure MicroSIP with:
     Login:      1001
     Password:   <configured password>
 
-Verify registration:
+Verify:
 
     pjsip show endpoint 1001
 
-A normal SIP Digest registration looks like:
+A normal SIP Digest registration sequence is:
 
     REGISTER
-        |
-        v
+        ↓
     401 Unauthorized
-        |
-        v
+        ↓
     REGISTER + Authorization
-        |
-        v
+        ↓
     200 OK
 
-The initial `401 Unauthorized` is expected. It is the SIP Digest authentication
-challenge and does not indicate a failed registration.
+The initial `401 Unauthorized` is expected. It is the SIP Digest
+authentication challenge and does not indicate a failed registration.
+
+Once MicroSIP is registered and working, it can be used as the reference
+endpoint for hardware interoperability testing.
 
 ---
 
-## 8. Artist G2 VoIP-108 Configuration
+## 8. Artist G2 VoIP-108
 
-The Artist G2 VoIP-108 has been successfully registered as extension `1002`.
+The Artist G2 VoIP-108 has been successfully validated against this server as
+extension `1002`.
 
-### Card / SIP Phone Configuration
+Validated functionality includes:
 
-Validated settings:
+- SIP registration
+- SIP Digest authentication
+- calls with MicroSIP
+- G.711 μ-law / PCMU negotiation
+- bidirectional RTP
+- call teardown
 
-| Setting | Value |
-|---|---|
-| Domain Server | `10.85.30.30` |
-| User Name | `1002` |
-| Authentication Name | `1002` |
-| Password | Matches Asterisk configuration |
-| Re-register | `300 s` |
-| Transport | UDP |
-| Proxy | Not required |
-| Trusted Domain | Not required |
-| Auto Hangup | Disabled |
+The Artist configuration contains both **card-level SIP settings** and
+**individual VoIP line settings**. Both are required for a working call.
 
-The tested VoIP-108 was reachable at:
-
-    10.85.226.120:5060
-
-Verify registration from Asterisk:
-
-    pjsip show endpoint 1002
-
-A successful registration should show a contact similar to:
-
-    sip:1002@10.85.226.120:5060
+See [G2.md](G2.md) for the validated configuration and troubleshooting notes.
 
 ---
 
-## 9. Artist G2 VoIP Line Configuration
+## 9. Dialplan
 
-The SIP Phone configuration controls registration of the VoIP-108.
-
-The individual Artist VoIP line configuration controls how calls are handled.
-
-Validated settings include:
-
-    Phone No. incoming: 1001
-    Preferred Audio Codec: G.711 U-law (64Bit/s)
-    Invitation (Outgoing call) mode: Manual
-
-### Important: Phone No. incoming
-
-The `Phone No. incoming` field restricts which incoming caller/phone number is
-accepted by the Artist VoIP line.
-
-This was important during testing.
-
-With an incorrect value, the VoIP-108 successfully completed SIP setup:
-
-    INVITE
-    100 Trying
-    200 OK
-    ACK
-
-but then immediately terminated the call with:
-
-    BYE
-
-and:
-
-    Reason: SIP;description="User Hung Up."
-
-Because SIP signaling and SDP negotiation had succeeded, this initially
-appeared to be an Asterisk or RTP problem.
-
-The cause was the Artist line configuration.
-
-For calls originating from extension `1001`, the working setting was:
-
-    Phone No. incoming = 1001
-
-After correcting this setting, the call remained established.
-
----
-
-## 10. Codec and RTP Validation
-
-The initial lab codec is:
-
-    G.711 μ-law / PCMU
-    RTP Payload Type 0
-    8000 Hz
-    20 ms packet time
-
-The VoIP-108 advertised support for:
-
-    PCMU
-    PCMA
-    G.722
-
-PCMU was successfully negotiated.
-
-During testing, the VoIP-108 used RTP port:
-
-    5004
-
-Asterisk successfully relayed bidirectional RTP between MicroSIP and the
-VoIP-108.
-
----
-
-## 11. Dialplan
-
-The current lab dialplan allows both endpoints to call each other:
+The current lab dialplan allows the two test endpoints to call each other:
 
     [internal]
 
@@ -395,12 +323,12 @@ The current lab dialplan allows both endpoints to call each other:
     exten => 1002,1,Dial(PJSIP/1002,30)
      same => n,Hangup()
 
-Calls between MicroSIP and the Artist G2 VoIP-108 have been successfully
-validated.
+As additional hardware is introduced, new extensions can be added using the
+same structure.
 
 ---
 
-## 12. Troubleshooting
+## 10. Troubleshooting
 
 Connect to Asterisk:
 
@@ -410,14 +338,18 @@ Show endpoints:
 
     pjsip show endpoints
 
-Show individual endpoints:
+Show a specific endpoint:
 
     pjsip show endpoint 1001
     pjsip show endpoint 1002
 
-Show transport:
+Show the PJSIP transport:
 
     pjsip show transports
+
+Show the dialplan:
+
+    dialplan show internal
 
 ### SIP Logging
 
@@ -441,9 +373,9 @@ Disable:
 
 During a working call, RTP packets should be visible in both directions.
 
-### Linux Packet Capture
+### Packet Capture
 
-Capture SIP:
+Capture SIP signaling:
 
     sudo tcpdump -ni enp0s25 -A 'udp port 5060'
 
@@ -463,11 +395,12 @@ returns:
 
     No objects found.
 
-check whether `chan_sip` has claimed UDP/5060:
+check:
 
     sip show settings
 
----
+If `chan_sip` owns UDP/5060, verify that `chan_sip.so` is disabled in
+`/etc/asterisk/modules.conf`.
 
 **Registration exceeds max contacts**
 
@@ -475,42 +408,31 @@ If Asterisk reports:
 
     Registration attempt ... will exceed max contacts of 1
 
-check for an existing/stale contact:
+check the currently stored contact:
 
     pjsip show endpoint 1001
     pjsip show endpoint 1002
 
----
-
-**SIP call establishes but there is no audio**
+**Call establishes but there is no audio**
 
 Enable:
 
     rtp set debug on
 
-Check RTP in both directions and verify routing, firewall rules, SDP
-addresses, codec negotiation, NAT handling, and RTP ports.
+Then verify RTP in both directions and check routing, firewall rules, SDP
+addresses, codec negotiation and NAT handling.
+
+For Artist-specific call behavior, see [G2.md](G2.md).
 
 ---
 
-**VoIP-108 answers and immediately hangs up**
-
-Check:
-
-    Phone No. incoming
-
-in the Artist VoIP line configuration before changing the Asterisk
-configuration.
-
----
-
-## 13. Git Workflow
+## 11. Git Workflow
 
 Before starting work:
 
     git pull
 
-Check changes:
+Review local changes:
 
     git status
     git diff
@@ -523,11 +445,11 @@ After successfully testing a configuration change:
 
 Only commit configuration changes after they have been tested.
 
-Do not commit production or sensitive SIP credentials to GitHub.
+Do not commit production or sensitive SIP credentials.
 
 ---
 
-## 14. Current Project Status
+## 12. Current Project Status
 
 Validated:
 
@@ -539,10 +461,9 @@ Validated:
 - SIP Digest authentication
 - MicroSIP ↔ VoIP-108 calling
 - G.711 μ-law / PCMU
-- Bidirectional RTP
-- Asterisk remaining in the RTP path
+- Bidirectional RTP through Asterisk
 - NAT handling for MicroSIP
-- Artist `Phone No. incoming` behavior
+- Artist G2 incoming-call configuration
 
 Next milestone:
 
