@@ -3,8 +3,10 @@
 This document describes the validated Artist G2 VoIP-108 configuration for
 the Riedel Lab SIP Server.
 
-For Asterisk installation, PJSIP configuration, NAT handling and general
+For Asterisk installation, PJSIP configuration, NAT handling, and general
 troubleshooting, see [README.md](README.md).
+
+For IPx16-specific configuration, see [IPX16.md](IPX16.md).
 
 ---
 
@@ -13,19 +15,20 @@ troubleshooting, see [README.md](README.md).
 The Artist G2 VoIP-108 was tested as extension `1002` against the Asterisk
 server running on the company NUC.
 
-    MicroSIP
-    Extension 1001
-         ↕
-         | SIP + RTP
-         ↕
-      Asterisk
-    10.85.30.30
-         ↕
-         | SIP + RTP
-         ↕
-    Artist G2 VoIP-108
-    Extension 1002
-    10.85.226.120
+The VoIP-108 has been validated with both MicroSIP and IPx16 endpoints:
+
+    MicroSIP 1001                    IPx16 1003
+         ↕                               ↕
+         +--------- SIP + RTP -----------+
+                       ↕
+                    Asterisk
+                  10.85.30.30
+                       ↕
+                   SIP + RTP
+                       ↕
+              Artist G2 VoIP-108
+                 Extension 1002
+                 10.85.226.120
 
 Validated:
 
@@ -36,6 +39,8 @@ Validated:
 - G.711 μ-law / PCMU
 - bidirectional RTP
 - normal call teardown
+- MicroSIP ↔ VoIP-108 calling
+- IPx16 ↔ VoIP-108 calling
 
 ---
 
@@ -109,7 +114,8 @@ A successful registration follows the normal SIP Digest exchange:
        | 200 OK                        |
        |<------------------------------|
 
-The initial `401 Unauthorized` is expected.
+The initial `401 Unauthorized` is expected. It is the SIP Digest
+authentication challenge and does not indicate a failed registration.
 
 ---
 
@@ -117,12 +123,12 @@ The initial `401 Unauthorized` is expected.
 
 Registration of the card alone is not sufficient.
 
-The individual Artist VoIP line also determines how incoming and outgoing
-calls are handled.
+The individual Artist VoIP line determines how incoming and outgoing calls
+are handled.
 
 Validated line settings include:
 
-    Phone No. incoming: 1001
+    Phone No. incoming: <calling extension>
     Preferred Audio Codec: G.711 U-law (64Bit/s)
     Invitation (Outgoing call) mode: Manual
 
@@ -144,24 +150,30 @@ because of the line configuration.
 ## 5. Phone No. incoming
 
 The `Phone No. incoming` field was the most important Artist-specific finding
-during initial testing.
+during interoperability testing.
 
 It restricts which incoming caller/phone number is accepted by the configured
 VoIP line.
 
-For the validated test:
+The value must match the SIP caller identity presented to the VoIP-108.
 
-    MicroSIP extension = 1001
+Validated examples:
 
-therefore the working Artist setting was:
-
+    MicroSIP 1001 -> VoIP-108 1002
     Phone No. incoming = 1001
+
+    IPx16 1003 -> VoIP-108 1002
+    Phone No. incoming = 1003
+
+Changing the calling endpoint therefore requires the corresponding
+`Phone No. incoming` value to be considered on the Artist VoIP line.
 
 ### Failure Behavior
 
-With an incorrect incoming number, SIP signaling initially appeared healthy.
+With an incorrect incoming number, SIP signaling can initially appear
+healthy.
 
-The VoIP-108 received the call and completed:
+The VoIP-108 can receive the call and complete:
 
     INVITE
        ↓
@@ -171,9 +183,9 @@ The VoIP-108 received the call and completed:
        ↓
     ACK
 
-The call therefore reached an established SIP dialog.
+The call therefore reaches an established SIP dialog.
 
-The VoIP-108 then immediately sent:
+The VoIP-108 then immediately sends:
 
     BYE
 
@@ -181,16 +193,16 @@ including:
 
     Reason: SIP;description="User Hung Up."
 
-This initially suggested an Asterisk, SDP, codec or RTP problem.
+This behavior initially suggested an Asterisk, SDP, codec, or RTP problem.
 
-However, the SIP server configuration was valid. The call was being rejected
-by the Artist line configuration after SIP setup.
+However, the SIP server configuration was valid. The call was being
+terminated because the Artist VoIP line did not accept the incoming caller
+identity.
 
-Correcting:
+Correcting `Phone No. incoming` to match the calling extension resolved the
+problem and allowed the call to remain established.
 
-    Phone No. incoming = 1001
-
-resolved the issue and the call remained established.
+This behavior was reproduced with both MicroSIP and IPx16 callers.
 
 ### Troubleshooting Rule
 
@@ -207,7 +219,7 @@ check **Phone No. incoming** before changing the Asterisk configuration.
 
 ## 6. Codec Negotiation
 
-Asterisk currently offers:
+Asterisk currently allows:
 
     G.711 μ-law / PCMU
 
@@ -238,22 +250,20 @@ Example:
 
 PCMU was successfully negotiated.
 
+The IPx16 was configured with G.722 as its preferred codec but successfully
+negotiated G.711 μ-law / PCMU through Asterisk.
+
 ---
 
 ## 7. RTP
 
-During the validated test, the VoIP-108 advertised:
-
-    RTP:  10.85.226.120:5004
-    RTCP: 10.85.226.120:5005
-
-Because the lab uses:
+The lab is configured with:
 
     direct_media=no
 
-RTP passes through Asterisk:
+This keeps Asterisk in the media path:
 
-    MicroSIP
+    Endpoint A
         ↕
        RTP
         ↕
@@ -263,17 +273,22 @@ RTP passes through Asterisk:
         ↕
     VoIP-108
 
+During the validated test, the VoIP-108 advertised:
+
+    RTP:  10.85.226.120:5004
+    RTCP: 10.85.226.120:5005
+
 Bidirectional RTP was successfully validated.
 
-To inspect RTP:
+To inspect RTP, connect to the Asterisk CLI:
 
     sudo asterisk -rvvv
 
-then:
+Enable RTP debugging:
 
     rtp set debug on
 
-Disable afterward:
+Disable it afterward:
 
     rtp set debug off
 
@@ -285,28 +300,28 @@ Enable PJSIP packet logging:
 
     pjsip set logger on
 
-The important stages for a call from extension `1001` to the VoIP-108 are:
+For an incoming call to the VoIP-108, the expected signaling flow is:
 
-    1001
-      |
-      | INVITE
-      v
-    Asterisk
-      |
-      | INVITE
-      v
+    Calling Endpoint
+          |
+          | INVITE
+          v
+       Asterisk
+          |
+          | INVITE
+          v
     VoIP-108 1002
-      |
-      | 100 Trying
-      | 200 OK
-      v
-    Asterisk
-      |
-      | 200 OK
-      v
-    1001
+          |
+          | 100 Trying
+          | 200 OK
+          v
+       Asterisk
+          |
+          | 200 OK
+          v
+    Calling Endpoint
 
-followed by ACK and bidirectional RTP.
+This is followed by ACK and bidirectional RTP.
 
 Disable logging when finished:
 
@@ -326,7 +341,7 @@ Before troubleshooting a VoIP-108 call, verify in this order:
 2. Endpoint `1002` is registered.
 3. The VoIP-108 card/SIP Phone credentials match Asterisk.
 4. The Artist VoIP line is configured.
-5. `Phone No. incoming` matches the expected incoming caller.
+5. `Phone No. incoming` matches the calling extension.
 6. G.711 μ-law / PCMU is available.
 7. SIP INVITE/200 OK/ACK completes.
 8. RTP is visible in both directions.
@@ -350,7 +365,7 @@ This order helps distinguish:
 The Artist G2 VoIP-108 has been successfully integrated with the lab Asterisk
 server.
 
-Validated path:
+Validated paths:
 
     MicroSIP 1001
          ↕
@@ -358,17 +373,20 @@ Validated path:
          ↕
     Artist G2 VoIP-108 1002
 
-The main Artist-specific lesson from initial integration was that successful
-SIP registration does not guarantee that the configured VoIP line will accept
-a call.
+and:
 
-In particular, `Phone No. incoming` must be considered when a call completes
-SIP setup but is immediately terminated by the VoIP-108.
-
-The next interoperability test is:
-
-    IPx16 / Duo
+    IPx16 1003
          ↕
-      Asterisk
+    Asterisk / PJSIP
          ↕
-    Artist G2 VoIP-108
+    Artist G2 VoIP-108 1002
+
+The main Artist-specific lesson is that successful SIP registration does not
+guarantee that the configured VoIP line will accept an incoming call.
+
+In particular, `Phone No. incoming` must match the calling extension. An
+incorrect value can result in apparently successful SIP call establishment
+followed by an immediate BYE from the VoIP-108.
+
+The Artist G2 VoIP-108 has now been validated with both MicroSIP and IPx16
+endpoints through Asterisk.
