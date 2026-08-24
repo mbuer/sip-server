@@ -1,9 +1,6 @@
 # Riedel Lab SIP Server
 
-> **Disclaimer:** This is a Copilot-assisted project. Parts of the code,
-> configuration, and documentation were created or refined with AI assistance.
-> All configurations should be reviewed and validated before use in a
-> production environment.
+> This is a Copilot-assisted project. 
 
 A simple Asterisk-based SIP lab for interoperability testing of current Riedel
 SIP interfaces and legacy Artist G2 VoIP hardware.
